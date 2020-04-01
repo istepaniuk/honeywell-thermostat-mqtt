@@ -1,4 +1,7 @@
-// Firmware to turn a rotary themostat smarter
+// Firmware to turn a rotary thermostat smarter
+//
+// https://hackaday.io/project/170693-old-thermostat-learns-new-tricks
+
 
 // Encoder.h messes with the interrupts
 // in the ESP and makes the UART output garbage.
@@ -24,13 +27,16 @@
 #define MQTT_USER "guest"
 #define MQTT_PASSWORD "guest"
 
-//event to dispatch when knob changes
+// Event to dispatch when knob changes
 #define MQTT_TOPIC_CHANGED "home.thermostat/evt.changed"
 
-//command to subscribe to change our set temperature
+// Command to subscribe to change our set temperature
 #define MQTT_TOPIC_SET "home.thermostat/cmd.set"
 
 char message_buff[100];
+
+int encoder_states_by_phase[] = {0b00, 0b01, 0b11, 0b10};
+int encoder_phases_by_state[] = {0, 1, 3, 2};
 
 long setPoint = 18;
 
@@ -90,7 +96,6 @@ void reconnect()
 
 void loop()
 {
-
     if (!client.connected()) {
         reconnect();
     }
@@ -124,39 +129,17 @@ void loop()
 
 void setEncoderPhase(int phase)
 {
-    switch (phase) {
-        case 0:
-            digitalWrite(ENCODER_A, LOW);
-            digitalWrite(ENCODER_B, LOW);
-            break;
-        case 1:
-            digitalWrite(ENCODER_A, HIGH);
-            digitalWrite(ENCODER_B, LOW);
-            break;
-        case 2:
-            digitalWrite(ENCODER_A, HIGH);
-            digitalWrite(ENCODER_B, HIGH);
-            break;
-        case 3:
-            digitalWrite(ENCODER_A, LOW);
-            digitalWrite(ENCODER_B, HIGH);
-    }
+    int newState = encoder_states_by_phase[phase];
+
+    digitalWrite(ENCODER_A, (newState << 1) & 0b10);
+    digitalWrite(ENCODER_B, (newState) & 0b01);
 }
 
 int getEncoderPhase()
 {
-    int sum = (digitalRead(ENCODER_A) << 1) & digitalRead(ENCODER_B);
+    int state = (digitalRead(ENCODER_A) << 1) & digitalRead(ENCODER_B);
 
-    switch (sum) {
-        case 0:
-            return 0;
-        case 2:
-            return 1;
-        case 3:
-            return 2;
-        case 1:
-            return 3;
-    }
+    return encoder_phases_by_state[state];
 }
 
 void callback(char *topic, byte *payload, unsigned int length)
@@ -172,20 +155,20 @@ void callback(char *topic, byte *payload, unsigned int length)
         Serial.println("msg> " + msgString);
     }
 
-    long msgLong = atol(msgString.c_str());
+    long requestedSetPoint = atol(msgString.c_str());
 
+    // Set the encoder pins to OUTPUT, preserving state
     int phase = getEncoderPhase();
     pinMode(ENCODER_B, OUTPUT);
     pinMode(ENCODER_A, OUTPUT);
     setEncoderPhase(phase);
 
-    // Move CCW, enough to reset but leaving the phase in such way that
+    // Move CCW, enough to overflow but leaving the phase in such way that
     // going later to the set point will result in the phase unchanged.
-    int resetSteps = 80 + (msgLong % 4);
+    int resetSteps = 80 + (requestedSetPoint % 4);
     for (i = 0; i < resetSteps; i++) {
         client.loop();
-        phase--;
-        if (phase < 0) phase = 3;
+        phase = (phase + 3) % 4;
         setEncoderPhase(phase);
         delay(ENCODER_DELAY);
     };
@@ -193,17 +176,17 @@ void callback(char *topic, byte *payload, unsigned int length)
     // Move CC so to reach the set point, the phase after this will
     // be the same as it was before resetting, matching the state
     // of the real encoder switches.
-    for (i = 0; i < msgLong; i++) {
+    for (i = 0; i < requestedSetPoint; i++) {
         client.loop();
-        phase++;
-        if (phase > 3) phase = 0;
+        phase = (phase + 1) % 4;
         setEncoderPhase(phase);
         delay(ENCODER_DELAY);
     }
 
-    // Back to input mode
+    // Back to input mode. The state at this point will be the same
+    // as it was when the pins went to OUTPUT mode.
     pinMode(ENCODER_B, INPUT);
     pinMode(ENCODER_A, INPUT);
 
-    knob.write(msgLong);
+    knob.write(requestedSetPoint);
 }
