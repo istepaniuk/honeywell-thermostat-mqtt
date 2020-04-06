@@ -1,4 +1,4 @@
-# honeywell-thermostat-hack
+# honeywell-thermostat-mqtt
 
 ESP8266 code to add MQTT report/set capability to an old thermostat.
 
