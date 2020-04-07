@@ -129,15 +129,15 @@ void loop()
 
 void setEncoderPhase(int phase)
 {
-    int newState = encoder_states_by_phase[phase];
+    int new_state = encoder_states_by_phase[phase];
 
-    digitalWrite(ENCODER_A, (newState << 1) & 0b10);
-    digitalWrite(ENCODER_B, (newState) & 0b01);
+    digitalWrite(ENCODER_A, (new_state >> 1) & 1);
+    digitalWrite(ENCODER_B, new_state & 1);
 }
 
 int getEncoderPhase()
 {
-    int state = (digitalRead(ENCODER_A) << 1) & digitalRead(ENCODER_B);
+    int state = (digitalRead(ENCODER_A) << 1) | digitalRead(ENCODER_B);
 
     return encoder_phases_by_state[state];
 }
