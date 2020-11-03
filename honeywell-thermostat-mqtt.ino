@@ -3,9 +3,8 @@
 // https://hackaday.io/project/170693-old-thermostat-learns-new-tricks
 
 
-// Encoder.h messes with the interrupts
-// in the ESP and makes the UART output garbage.
-// apparently polling the pins is good enough anyway.
+// Encoder.h is not compatible with the interrupts on the
+// ESP chips. Apparently, polling the pins is good enough anyway.
 #define ENCODER_DO_NOT_USE_INTERRUPTS
 
 #include <Encoder.h>
